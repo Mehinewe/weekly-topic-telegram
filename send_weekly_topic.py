@@ -1,0 +1,248 @@
+"""
+Weekly Telegram Topic Auto-Poster
+=================================
+
+Posts this week's English topic (a PNG image + a message) to your Telegram group.
+
+It reads `schedule.csv`, picks the row for the current week (this Monday), and
+sends the matching image from `images/` with the message as the caption.
+
+Run manually for testing:
+    python send_weekly_topic.py            # picks this week's row
+    python send_weekly_topic.py 2026-06-22 # force a specific Monday (for testing)
+
+Required environment variables:
+    TELEGRAM_BOT_TOKEN   the token from @BotFather
+    TELEGRAM_CHAT_ID     your group's chat id (negative number, e.g. -1001234567890)
+"""
+
+import csv
+import os
+import sys
+from datetime import date, datetime, timedelta
+from pathlib import Path
+
+import requests
+
+# Print UTF-8 so emoji captions don't crash the Windows console (cp1252).
+# This only affects console output; sending to Telegram is always UTF-8.
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+except (AttributeError, ValueError):
+    pass
+
+# --- Configuration --------------------------------------------------------
+
+BASE_DIR = Path(__file__).resolve().parent
+SCHEDULE_FILE = BASE_DIR / "schedule.csv"
+IMAGES_DIR = BASE_DIR / "images"
+
+# Telegram limits a photo caption to 1024 characters. Longer messages are
+# split: the photo goes out with the first chunk, the rest as a text message.
+CAPTION_LIMIT = 1024
+
+API_TIMEOUT = 30  # seconds
+
+
+# --- Helpers --------------------------------------------------------------
+
+def _fail(message):
+    """Print an error and exit non-zero so the scheduler flags the run."""
+    print(f"ERROR: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def monday_of(d):
+    """Return the Monday of the week containing date `d`."""
+    return d - timedelta(days=d.weekday())
+
+
+# Accept both ISO (2026-06-22) and the US/Excel style (6/22/2026).
+_DATE_FORMATS = ("%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y")
+
+
+def _parse_date(date_str):
+    """Parse a date string in any supported format, or return None."""
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.strptime(date_str, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def resolve_image(name):
+    """
+    Find the image file for `name` in images/.
+
+    If the exact filename isn't there, try swapping the extension (so a CSV that
+    says 0.png still matches an actual 0.jpg, and vice versa).
+    """
+    exact = IMAGES_DIR / name
+    if exact.exists():
+        return exact
+    stem = Path(name).stem
+    for candidate in sorted(IMAGES_DIR.glob(stem + ".*")):
+        if candidate.suffix.lower() in (".png", ".jpg", ".jpeg"):
+            return candidate
+    return None
+
+
+def load_schedule():
+    """Read schedule.csv into a list of {date, image, message} dicts."""
+    if not SCHEDULE_FILE.exists():
+        _fail(f"schedule file not found: {SCHEDULE_FILE}")
+
+    rows = []
+    with SCHEDULE_FILE.open(newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        required = {"date", "image", "message"}
+        if not required.issubset(set(reader.fieldnames or [])):
+            _fail(
+                "schedule.csv must have columns: date, image, message "
+                f"(found: {reader.fieldnames})"
+            )
+        for line_no, raw in enumerate(reader, start=2):
+            date_str = (raw.get("date") or "").strip()
+            if not date_str:
+                continue  # skip blank lines
+            parsed = _parse_date(date_str)
+            if parsed is None:
+                _fail(
+                    f"bad date '{date_str}' on line {line_no}; "
+                    "use YYYY-MM-DD or M/D/YYYY"
+                )
+            rows.append(
+                {
+                    "date": parsed,
+                    "image": (raw.get("image") or "").strip(),
+                    "message": (raw.get("message") or "").strip(),
+                }
+            )
+    if not rows:
+        _fail("schedule.csv has no usable rows")
+    return rows
+
+
+def pick_row(rows, target_monday):
+    """
+    Choose the row for `target_monday`.
+
+    Prefer an exact match on the Monday date. If none, fall back to the most
+    recent past row, so a missed week still re-sends the latest topic rather
+    than nothing.
+    """
+    # Match on the Monday of each row's week, so dates don't have to be exact
+    # Mondays (e.g. 6/18 counts as the week starting Monday 6/15).
+    exact = [r for r in rows if monday_of(r["date"]) == target_monday]
+    if exact:
+        return exact[-1]
+
+    past = sorted(
+        [r for r in rows if monday_of(r["date"]) <= target_monday],
+        key=lambda r: r["date"],
+    )
+    if past:
+        print(
+            f"No row for week of {target_monday}; "
+            f"falling back to most recent: {past[-1]['date']}"
+        )
+        return past[-1]
+
+    _fail(f"no schedule row on or before week of {target_monday}")
+
+
+def send_photo(token, chat_id, image_path, caption):
+    """Send a photo with caption via Telegram sendPhoto."""
+    url = f"https://api.telegram.org/bot{token}/sendPhoto"
+    with image_path.open("rb") as photo:
+        resp = requests.post(
+            url,
+            data={"chat_id": chat_id, "caption": caption},
+            files={"photo": photo},
+            timeout=API_TIMEOUT,
+        )
+    _check(resp, "sendPhoto")
+
+
+def send_message(token, chat_id, text):
+    """Send a plain text message via Telegram sendMessage."""
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    resp = requests.post(
+        url,
+        data={"chat_id": chat_id, "text": text},
+        timeout=API_TIMEOUT,
+    )
+    _check(resp, "sendMessage")
+
+
+def _check(resp, what):
+    """Validate a Telegram API response, failing loudly on errors."""
+    try:
+        body = resp.json()
+    except ValueError:
+        _fail(f"{what}: non-JSON response (HTTP {resp.status_code}): {resp.text[:300]}")
+    if not body.get("ok"):
+        _fail(f"{what} failed: {body.get('description', resp.text[:300])}")
+    print(f"{what} OK")
+
+
+# --- Main -----------------------------------------------------------------
+
+def main():
+    # Parse arguments: an optional date and an optional --dry-run flag, in any order.
+    #   --dry-run  show what WOULD be posted, without contacting Telegram.
+    args = sys.argv[1:]
+    dry_run = "--dry-run" in args
+    date_args = [a for a in args if not a.startswith("--")]
+
+    if date_args:
+        target = _parse_date(date_args[0])
+        if target is None:
+            _fail(f"bad date argument '{date_args[0]}'; use YYYY-MM-DD or M/D/YYYY")
+    else:
+        target = date.today()
+    target_monday = monday_of(target)
+
+    rows = load_schedule()
+    row = pick_row(rows, target_monday)
+
+    if not row["image"]:
+        _fail(f"row dated {row['date']} has no image filename")
+    image_path = resolve_image(row["image"])
+    if image_path is None:
+        _fail(f"image not found in {IMAGES_DIR} for: {row['image']}")
+
+    message = row["message"]
+
+    if dry_run:
+        print("--- DRY RUN (nothing sent) ---")
+        print(f"For date:  {target}  (week of Monday {target_monday})")
+        print(f"Would post image: {image_path.name}")
+        print(f"Caption:\n{message}")
+        print("--- end dry run ---")
+        return
+
+    # Real send path needs credentials.
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+    if not token:
+        _fail("TELEGRAM_BOT_TOKEN is not set")
+    if not chat_id:
+        _fail("TELEGRAM_CHAT_ID is not set")
+
+    print(f"Posting topic for {row['date']}: image={image_path.name}")
+
+    if len(message) <= CAPTION_LIMIT:
+        send_photo(token, chat_id, image_path, message)
+    else:
+        # Caption too long: photo carries the first chunk, rest as a follow-up.
+        send_photo(token, chat_id, image_path, message[:CAPTION_LIMIT])
+        send_message(token, chat_id, message[CAPTION_LIMIT:])
+
+    print("Done.")
+
+
+if __name__ == "__main__":
+    main()

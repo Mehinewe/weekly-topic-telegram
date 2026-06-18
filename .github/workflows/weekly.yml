@@ -1,0 +1,39 @@
+name: Weekly Telegram topic
+
+on:
+  # Runs every Monday. GitHub cron is ALWAYS in UTC.
+  #
+  # Denver is Mountain Time:
+  #   Summer (MDT, UTC-6): 8:00 AM Denver = 14:00 UTC
+  #   Winter (MST, UTC-7): 8:00 AM Denver = 15:00 UTC
+  #
+  # Pick the hour you want and edit below. Using 14:00 UTC means the post lands
+  # at 8 AM in summer / 7 AM in winter (a 1-hour shift twice a year). If you need
+  # it pinned to exactly 8 AM year-round, swap the active line in March/November.
+  schedule:
+    - cron: "0 14 * * 1"   # 14:00 UTC every Monday  (8 AM Denver in summer)
+    # - cron: "0 15 * * 1" # 15:00 UTC every Monday  (8 AM Denver in winter)
+
+  # Lets you trigger a test run by hand from the Actions tab.
+  workflow_dispatch:
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Post this week's topic
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python send_weekly_topic.py
