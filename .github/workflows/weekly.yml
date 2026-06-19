@@ -6,8 +6,13 @@ on:
   schedule:
     - cron: "0 10 * * 1"   # 10:00 GMT every Monday
 
-  # Lets you trigger a test run by hand from the Actions tab.
+  # Lets you trigger a run by hand from the Actions tab.
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (preview only, do NOT post to the group)"
+        type: boolean
+        default: true
 
 jobs:
   post:
@@ -28,4 +33,6 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python send_weekly_topic.py
+        # On the weekly schedule this always posts. On a manual run it posts
+        # only if you untick "Dry run" (default is preview-only / safe).
+        run: python send_weekly_topic.py ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && '--dry-run' || '' }}
