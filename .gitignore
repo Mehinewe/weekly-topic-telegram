@@ -9,4 +9,5 @@ venv/
 
 # NOTE: activity_log.csv and activity_state.json ARE committed on purpose —
 # the hourly GitHub Actions logger pushes them back so the log persists
-# between runs. Keep this repo PRIVATE; it stores members' names + activity.
+# between runs. The log stores ONLY anonymous numeric Telegram ids (no names),
+# so it's safe in a public repo; winners' names are looked up live at post time.

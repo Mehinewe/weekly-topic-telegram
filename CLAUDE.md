@@ -86,16 +86,18 @@ Because Telegram gives a bot **no message history** and drops undelivered update
 
 - **`log_activity.py`** (hourly via `log.yml`) — calls `getUpdates`, advances the
   `last_update_id` saved in `activity_state.json`, and appends one row per group message
-  to `activity_log.csv` (`iso_time, week_monday, user_id, display_name, type, is_reply,
+  to `activity_log.csv` (`iso_time, week_monday, user_id, type, is_reply,
   reply_to_user_id`). `type` ∈ video/voice/text/other; bot messages and other chats are
-  skipped. The workflow **commits the log + state back to the repo** (concurrency-guarded)
-  so state persists across stateless runs — this is why `activity_log.csv` and
-  `activity_state.json` are intentionally NOT gitignored, and why the repo must be private.
+  skipped. The log stores **only anonymous numeric ids — no names** — so the repo can be
+  public (Pages needs that). The workflow **commits the log + state back to the repo**
+  (concurrency-guarded) so state persists across stateless runs — this is why
+  `activity_log.csv` and `activity_state.json` are intentionally NOT gitignored.
 - **`send_weekly_awards.py`** (Monday via `awards.yml`) — reads the rows for the
   *previous* week (`monday_of(today) - 7d`), tallies per `awards.csv` metric
-  (video / voice / social), picks the top user per award, and sends `sendAnimation` (GIF
-  from `badges/`) + caption + an inline URL button. Social = most replies-to-others,
-  falling back to most messages.
+  (video / voice / social), picks the top user per award, looks up that user's name **live
+  via `getChatMember`** (`resolve_name`), and sends `sendAnimation` (GIF from `badges/`) +
+  caption + an inline URL button. Social = most replies-to-others, falling back to most
+  messages. Dry-run resolves names only if a token is present, else prints the raw id.
 
 `awards.csv` columns: `key, metric, gif, message, badge_type`. `message` uses `{name}`;
 `badge_type` must match a key in the mini app and becomes the button's `?type=` param.
@@ -110,7 +112,8 @@ default; if `docs/frames/<type>.png` exists it's overlaid instead. No server.
 
 **Critical external setup** (see [AWARDS_GUIDE.md](AWARDS_GUIDE.md)): the bot's privacy
 mode must be **disabled in @BotFather** (or bot made admin) or it sees no messages and all
-counts are empty; repo must be **private**; GitHub Pages must be enabled on `/docs`.
+counts are empty; repo must be **public** (free-plan Pages requirement — safe because the
+log is anonymous); GitHub Pages must be enabled on `/docs`.
 
 ## Conventions
 

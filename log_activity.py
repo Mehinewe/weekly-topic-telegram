@@ -52,11 +52,13 @@ STATE_FILE = BASE_DIR / "activity_state.json"
 API_TIMEOUT = 60          # HTTP timeout for the whole request
 GETUPDATES_LIMIT = 100    # max updates Telegram returns per call
 
+# The log stores ONLY anonymous numeric Telegram ids — no names — so the repo
+# can be public without exposing anyone. The winner's name is looked up live at
+# post time (see send_weekly_awards.py).
 LOG_FIELDS = [
     "iso_time",
     "week_monday",
     "user_id",
-    "display_name",
     "type",
     "is_reply",
     "reply_to_user_id",
@@ -114,14 +116,6 @@ def write_offset(last_update_id):
         json.dumps({"last_update_id": last_update_id}, indent=2) + "\n",
         encoding="utf-8",
     )
-
-
-def display_name_of(user):
-    """Build a human-readable name from a Telegram user object."""
-    first = (user.get("first_name") or "").strip()
-    last = (user.get("last_name") or "").strip()
-    full = (first + " " + last).strip()
-    return full or user.get("username") or str(user.get("id"))
 
 
 def classify(message):
@@ -214,7 +208,6 @@ def main():
                 "iso_time": sent.isoformat(),
                 "week_monday": monday_of(sent.date()).isoformat(),
                 "user_id": sender.get("id"),
-                "display_name": display_name_of(sender),
                 "type": classify(message),
                 "is_reply": int(is_reply),
                 "reply_to_user_id": reply_user if is_reply else "",

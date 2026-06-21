@@ -24,9 +24,11 @@ activity. Fix this once:
 
 Without this the counts will be empty or wrong.
 
-### 2. Make the repo private
-The activity log stores members' names and what they posted. In GitHub:
-**Settings → General → Danger Zone → Change visibility → Private.**
+### 2. Make the repo public
+GitHub Pages (the badge page) needs a public repo on the free plan. This is
+safe here: the activity log stores **only anonymous numeric ids**, never names —
+winners' names are looked up live from Telegram at post time. In GitHub:
+**Settings → General → Danger Zone → Change visibility → Public.**
 
 ### 3. Turn on the badge avatar page (GitHub Pages)
 - **Settings → Pages → Build and deployment → Source: Deploy from a branch.**
@@ -54,7 +56,8 @@ weekly topic poster are reused here — nothing new to add.
 ---
 
 ## How winners are decided
-Computed from `activity_log.csv` for the **previous** week (Mon–Sun):
+Computed from `activity_log.csv` (anonymous ids only) for the **previous** week
+(Mon–Sun); the winner's name is fetched live from Telegram when posting:
 
 | Award | Metric |
 |---|---|

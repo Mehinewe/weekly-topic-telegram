@@ -154,14 +154,32 @@ def load_week_rows(week_monday):
     return rows
 
 
-def latest_names(rows):
-    """Map user_id -> the most recently seen display name."""
-    names = {}
-    for row in rows:  # rows are in chronological (append) order
-        uid = row.get("user_id")
-        if uid:
-            names[uid] = row.get("display_name") or uid
-    return names
+def resolve_name(token, chat_id, user_id, _cache={}):
+    """Look up a member's current display name live via getChatMember.
+
+    The activity log stores only anonymous numeric ids, so names are fetched
+    here, only for the handful of winners, right before posting. Falls back to
+    "User <id>" if the lookup fails (e.g. the member left the group).
+    """
+    if user_id in _cache:
+        return _cache[user_id]
+    name = f"User {user_id}"
+    try:
+        url = f"https://api.telegram.org/bot{token}/getChatMember"
+        resp = requests.get(
+            url, params={"chat_id": chat_id, "user_id": user_id}, timeout=API_TIMEOUT
+        )
+        body = resp.json()
+        if body.get("ok"):
+            user = body["result"].get("user", {})
+            first = (user.get("first_name") or "").strip()
+            last = (user.get("last_name") or "").strip()
+            full = (first + " " + last).strip()
+            name = full or user.get("username") or name
+    except (ValueError, requests.RequestException, KeyError):
+        pass
+    _cache[user_id] = name
+    return name
 
 
 def tally(rows, metric):
@@ -259,8 +277,9 @@ def main():
 
     awards = load_awards()
     rows = load_week_rows(last_week_monday)
-    names = latest_names(rows)
     app_url = (os.environ.get("BADGE_APP_URL") or DEFAULT_BADGE_APP_URL).rstrip("/")
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
 
     print(f"Computing awards for week of Monday {last_week_monday} "
           f"({len(rows)} logged messages).")
@@ -276,33 +295,35 @@ def main():
             print(f"  {award['key']}: no qualifying activity — skipping.")
             continue
         uid, count = result
-        planned.append((award, uid, names.get(uid, uid), count))
+        planned.append((award, uid, count))
 
     if not planned:
         print("No awards have a winner this week — nothing to post.")
         return
 
     if dry_run:
+        # Names come from a live lookup, which needs a token; without one we
+        # just show the anonymous id so dry runs still work offline.
         print("--- DRY RUN (nothing sent) ---")
-        for award, uid, name, count in planned:
+        for award, uid, count in planned:
+            name = resolve_name(token, chat_id, uid) if (token and chat_id) else f"User {uid}"
             print(f"  {award['key']}: {name} (id {uid}) — {count} — gif={award['gif']}")
             print(f"    button -> {app_url}/?type={award['badge_type']}")
         print("--- end dry run ---")
         return
 
-    token = os.environ.get("TELEGRAM_BOT_TOKEN")
-    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
     if not token:
         _fail("TELEGRAM_BOT_TOKEN is not set")
     if not chat_id:
         _fail("TELEGRAM_CHAT_ID is not set")
 
-    for award, uid, name, count in planned:
+    for award, uid, count in planned:
         gif_path = resolve_gif(award["gif"])
         if gif_path is None:
             print(f"  WARNING: gif not found for {award['key']} "
                   f"({award['gif']}) — skipping this award.", file=sys.stderr)
             continue
+        name = resolve_name(token, chat_id, uid)
         caption = award["message"].format(name=name)
         button_url = f"{app_url}/?type={award['badge_type']}"
         print(f"Posting {award['key']} for {name} ({count}).")
