@@ -281,6 +281,7 @@ def main():
 
     args = sys.argv[1:]
     dry_run = "--dry-run" in args
+    this_week = "--this-week" in args  # testing: award the CURRENT week, not last
     date_args = [a for a in args if not a.startswith("--")]
 
     if date_args:
@@ -290,8 +291,14 @@ def main():
     else:
         today = date.today()
 
-    # Awards posted this Monday celebrate the PREVIOUS week.
-    last_week_monday = monday_of(today) - timedelta(days=7)
+    # Normally awards posted on Monday celebrate the PREVIOUS week. With
+    # --this-week (a testing aid) they celebrate the week in progress, so you
+    # can see results right after logging some activity instead of waiting.
+    if this_week:
+        target_monday = monday_of(today)
+    else:
+        target_monday = monday_of(today) - timedelta(days=7)
+    last_week_monday = target_monday
 
     awards = load_awards()
     rows = load_week_rows(last_week_monday)

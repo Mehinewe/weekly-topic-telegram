@@ -13,6 +13,10 @@ on:
         description: "Dry run (show winners, do NOT post to the group)"
         type: boolean
         default: true
+      this_week:
+        description: "Test on THIS week's activity (instead of last week)"
+        type: boolean
+        default: false
 
 jobs:
   post:
@@ -34,6 +38,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           BADGE_APP_URL: ${{ vars.BADGE_APP_URL }}
-        # Scheduled runs post for real. Manual runs preview unless you untick
-        # "Dry run".
-        run: python send_weekly_awards.py ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && '--dry-run' || '' }}
+        # Scheduled runs post for real for last week. Manual runs preview
+        # unless you untick "Dry run", and can target the current week for
+        # testing via "this_week".
+        run: python send_weekly_awards.py ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && '--dry-run' || '' }} ${{ (github.event_name == 'workflow_dispatch' && inputs.this_week) && '--this-week' || '' }}
