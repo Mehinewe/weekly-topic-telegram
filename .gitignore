@@ -6,3 +6,7 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+
+# NOTE: activity_log.csv and activity_state.json ARE committed on purpose —
+# the hourly GitHub Actions logger pushes them back so the log persists
+# between runs. Keep this repo PRIVATE; it stores members' names + activity.

@@ -1,0 +1,39 @@
+name: Weekly awards
+
+on:
+  # Runs every Monday at 10:00 UTC (same hour as the weekly topic). It posts
+  # awards for the PREVIOUS week, computed from the activity log.
+  schedule:
+    - cron: "0 10 * * 1"   # 10:00 UTC every Monday
+
+  # Manual trigger from the Actions tab. Defaults to a safe preview.
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (show winners, do NOT post to the group)"
+        type: boolean
+        default: true
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Post last week's awards
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          BADGE_APP_URL: ${{ vars.BADGE_APP_URL }}
+        # Scheduled runs post for real. Manual runs preview unless you untick
+        # "Dry run".
+        run: python send_weekly_awards.py ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && '--dry-run' || '' }}
