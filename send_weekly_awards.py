@@ -96,15 +96,23 @@ def _parse_date(date_str):
     return None
 
 
-def resolve_gif(name):
-    """Find the GIF/animation file for `name` in badges/, tolerating the
-    extension (a CSV that says shark.gif still matches shark.mp4)."""
+ANIMATED_EXTS = (".gif", ".mp4", ".webp")
+IMAGE_EXTS = (".png", ".jpg", ".jpeg")
+
+
+def resolve_media(name):
+    """Find the badge file for `name` in badges/, tolerating the extension.
+
+    Accepts both animations (.gif/.mp4/.webp) and plain images (.png/.jpg), so
+    a static badge picture works just as well as an animated one. A CSV that
+    says shark.gif still matches shark.png on disk.
+    """
     exact = BADGES_DIR / name
     if exact.exists():
         return exact
     stem = Path(name).stem
     for candidate in sorted(BADGES_DIR.glob(stem + ".*")):
-        if candidate.suffix.lower() in (".gif", ".mp4", ".webp"):
+        if candidate.suffix.lower() in ANIMATED_EXTS + IMAGE_EXTS:
             return candidate
     return None
 
@@ -221,21 +229,27 @@ def pick_winner(counts):
 
 # --- Telegram -------------------------------------------------------------
 
-def send_animation(token, chat_id, gif_path, caption, button_url):
-    """Send a GIF with caption and a single inline URL button."""
-    url = f"https://api.telegram.org/bot{token}/sendAnimation"
+def send_badge(token, chat_id, media_path, caption, button_url):
+    """Send the badge (animation or static image) with caption + inline button.
+
+    Uses sendAnimation for .gif/.mp4/.webp and sendPhoto for .png/.jpg, so the
+    award works whether you supply an animated GIF or a plain picture.
+    """
+    animated = media_path.suffix.lower() in ANIMATED_EXTS
+    method, field = ("sendAnimation", "animation") if animated else ("sendPhoto", "photo")
+    url = f"https://api.telegram.org/bot{token}/{method}"
     reply_markup = (
         '{"inline_keyboard":[[{"text":"🌟 Get Your Badge Avatar 🌟",'
         f'"url":"{button_url}"}}]]}}'
     )
-    with gif_path.open("rb") as anim:
+    with media_path.open("rb") as media:
         resp = requests.post(
             url,
             data={"chat_id": chat_id, "caption": caption, "reply_markup": reply_markup},
-            files={"animation": anim},
+            files={field: media},
             timeout=API_TIMEOUT,
         )
-    _check(resp, "sendAnimation")
+    _check(resp, method)
 
 
 def send_message(token, chat_id, text):
@@ -318,9 +332,9 @@ def main():
         _fail("TELEGRAM_CHAT_ID is not set")
 
     for award, uid, count in planned:
-        gif_path = resolve_gif(award["gif"])
-        if gif_path is None:
-            print(f"  WARNING: gif not found for {award['key']} "
+        media_path = resolve_media(award["gif"])
+        if media_path is None:
+            print(f"  WARNING: badge file not found for {award['key']} "
                   f"({award['gif']}) — skipping this award.", file=sys.stderr)
             continue
         name = resolve_name(token, chat_id, uid)
@@ -328,9 +342,9 @@ def main():
         button_url = f"{app_url}/?type={award['badge_type']}"
         print(f"Posting {award['key']} for {name} ({count}).")
         if len(caption) <= CAPTION_LIMIT:
-            send_animation(token, chat_id, gif_path, caption, button_url)
+            send_badge(token, chat_id, media_path, caption, button_url)
         else:
-            send_animation(token, chat_id, gif_path, caption[:CAPTION_LIMIT], button_url)
+            send_badge(token, chat_id, media_path, caption[:CAPTION_LIMIT], button_url)
             send_message(token, chat_id, caption[CAPTION_LIMIT:])
 
     print("Done.")

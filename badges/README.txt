@@ -7,9 +7,9 @@ Drop one animated file per award, named to match the "gif" column in
     voice_legend.gif
     social_butterfly.gif
 
-Telegram accepts .gif, .mp4, or .webp animations. The filename extension is
-tolerant: if awards.csv says "video_shark.gif" but you upload
-"video_shark.mp4", it still matches.
+You can use an ANIMATION (.gif, .mp4, .webp) OR a plain IMAGE (.png, .jpg) —
+either works. The filename extension is tolerant: if awards.csv says
+"video_shark.gif" but you upload "video_shark.png", it still matches.
 
-These are sent with sendAnimation as the celebratory GIF at the top of each
-award post (like the butterfly logo GIF in the original).
+Animations are sent with sendAnimation, plain images with sendPhoto, so a
+simple badge picture looks great too — you don't need an animated GIF.
