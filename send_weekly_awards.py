@@ -147,12 +147,16 @@ def load_awards():
 
 
 def load_week_rows(week_monday):
-    """Return the logged rows for the given week (Monday date)."""
+    """Return the logged rows for the given week (Monday date).
+
+    A missing log is not an error — it just means the logger hasn't recorded
+    anything yet (e.g. the first days after setup). Treat it as "no activity"
+    so the run ends cleanly instead of flagging a failure.
+    """
     if not LOG_FILE.exists():
-        _fail(
-            f"activity log not found: {LOG_FILE}. The logger "
-            "(log_activity.py) must run for a week before awards can post."
-        )
+        print(f"No activity log yet ({LOG_FILE.name} doesn't exist) — "
+              "the logger hasn't recorded anything so far.")
+        return []
     wanted = week_monday.isoformat()
     rows = []
     with LOG_FILE.open(newline="", encoding="utf-8") as f:
