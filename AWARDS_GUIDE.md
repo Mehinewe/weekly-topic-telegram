@@ -52,10 +52,16 @@ reveal their photo in the circle (like the original). If a member has no
 profile photo, or it's hidden from the bot, that award just posts the static
 badge instead — nothing breaks.
 
-### 5. (Optional) Real badge artwork
-The avatar page works out of the box by drawing a coloured ring + emoji. To use
-custom art, add transparent square PNGs to **`docs/frames/`**: `shark.png`,
-`microphone.png`, `butterfly.png` (see that folder's README).
+### 5. The "Get Your Badge Avatar" button
+For each winner the poster also builds a **badge avatar** — their profile photo
+with the award emblem in the corner — and the button opens it ready to download
+(no upload needed). The finished images are committed under `docs/avatars/` and
+served by GitHub Pages, so the button works automatically.
+
+If a member has no profile photo (or it's hidden from the bot), the button
+instead opens the manual page where they can upload a photo. That page draws a
+coloured ring + emoji by default; to give it custom art, add transparent square
+PNGs to **`docs/frames/`**: `shark.png`, `microphone.png`, `butterfly.png`.
 
 The same `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` repo secrets used by the
 weekly topic poster are reused here — nothing new to add.

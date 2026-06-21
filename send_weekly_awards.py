@@ -47,6 +47,9 @@ BASE_DIR = Path(__file__).resolve().parent
 LOG_FILE = BASE_DIR / "activity_log.csv"
 AWARDS_FILE = BASE_DIR / "awards.csv"
 BADGES_DIR = BASE_DIR / "badges"
+# Built badge avatars are written under docs/ so GitHub Pages serves them and
+# the award button can link straight to the winner's finished avatar.
+AVATARS_DIR = BASE_DIR / "docs" / "avatars"
 
 # Where the badge-avatar mini app is hosted (GitHub Pages). The award button
 # links here with ?type=<badge_type>. Override with the BADGE_APP_URL env var.
@@ -410,27 +413,40 @@ def main():
         caption = html.escape(award["message"], quote=False).replace(
             "{name}", mention_html(uid, first)
         )
+        # Default button: the manual-upload page for this badge type (used when
+        # we can't get the winner's photo).
         button_url = f"{app_url}/?type={award['badge_type']}"
         print(f"Posting {award['key']} for {first} ({count}).")
 
-        # Personalise: if the badge is a static image and we can fetch the
-        # winner's photo, build a flip GIF (badge -> their photo). Otherwise
-        # fall back to the plain badge.
+        # Fetch the winner's photo once, reused for the flip GIF and the avatar.
+        photo = (get_profile_photo(token, uid)
+                 if media_path.suffix.lower() in IMAGE_EXTS else None)
+
         send_path, temp_gif = media_path, None
-        if media_path.suffix.lower() in IMAGE_EXTS:
-            photo = get_profile_photo(token, uid)
-            if photo is not None:
-                try:
-                    from make_award_gif import build_flip_gif
-                    temp_gif = BADGES_DIR / f"_flip_{award['key']}.gif"
-                    build_flip_gif(media_path, photo, temp_gif)
-                    send_path = temp_gif
-                    print("  personalised with profile photo (flip GIF)")
-                except Exception as exc:  # noqa: BLE001 - never block the post
-                    print(f"  (flip GIF failed: {exc}; sending static badge)",
-                          file=sys.stderr)
-            else:
-                print("  no profile photo available — sending static badge")
+        if photo is not None:
+            # 1. Personalised flip GIF (badge -> their photo) as the post media.
+            try:
+                from make_award_gif import build_flip_gif
+                temp_gif = BADGES_DIR / f"_flip_{award['key']}.gif"
+                build_flip_gif(media_path, photo, temp_gif)
+                send_path = temp_gif
+                print("  personalised with profile photo (flip GIF)")
+            except Exception as exc:  # noqa: BLE001 - never block the post
+                print(f"  (flip GIF failed: {exc}; sending static badge)",
+                      file=sys.stderr)
+            # 2. Pre-built badge avatar (photo + corner emblem) for the button.
+            try:
+                from make_award_gif import build_badge_avatar
+                AVATARS_DIR.mkdir(parents=True, exist_ok=True)
+                avatar_name = f"{award['key']}-{uid}.png"
+                build_badge_avatar(media_path, photo, AVATARS_DIR / avatar_name)
+                button_url = f"{app_url}/avatar.html?img=avatars/{avatar_name}"
+                print(f"  built badge avatar -> docs/avatars/{avatar_name}")
+            except Exception as exc:  # noqa: BLE001
+                print(f"  (avatar build failed: {exc}; button uses upload page)",
+                      file=sys.stderr)
+        else:
+            print("  no profile photo available — sending static badge")
 
         try:
             if len(caption) <= CAPTION_LIMIT:

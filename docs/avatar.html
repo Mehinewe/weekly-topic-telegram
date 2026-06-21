@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Your Badge Avatar</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root { --bg:#0e1621; --card:#17212b; --fg:#f5f5f5; --muted:#8a9aa9; --accent:#5eb5f7; }
+  * { box-sizing: border-box; }
+  body {
+    margin:0; min-height:100vh; background:var(--bg); color:var(--fg);
+    font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    display:flex; flex-direction:column; align-items:center; padding:20px;
+  }
+  h1 { font-size:1.25rem; margin:.2rem 0 0; text-align:center; }
+  .sub { color:var(--muted); font-size:.9rem; margin:.3rem 0 1.2rem; text-align:center; }
+  .card {
+    background:var(--card); border-radius:18px; padding:22px; width:100%;
+    max-width:380px; box-shadow:0 8px 30px rgba(0,0,0,.35); text-align:center;
+  }
+  img#avatar { width:300px; height:300px; max-width:100%; border-radius:16px; background:#0a0f15; object-fit:cover; }
+  a.btn, button {
+    appearance:none; border:0; border-radius:12px; padding:13px 16px; margin-top:16px;
+    font-size:1rem; font-weight:600; cursor:pointer; color:#fff;
+    background:var(--accent); display:block; text-align:center; text-decoration:none;
+  }
+  .hint { color:var(--muted); font-size:.8rem; margin-top:14px; line-height:1.4; }
+  .err { color:#ff8a8a; }
+</style>
+</head>
+<body>
+  <h1>🌟 Your Badge Avatar</h1>
+  <div class="sub">Save it and wear it with pride!</div>
+
+  <div class="card">
+    <img id="avatar" alt="Your badge avatar">
+    <a id="download" class="btn" download="badge-avatar.png">⬇️ Download</a>
+    <div class="hint" id="hint">
+      Tip: tap <b>Download</b>, or press and hold the image to save it. Then open
+      Telegram → your profile → <b>Edit → set profile photo</b>.
+    </div>
+  </div>
+
+<script>
+  const tg = window.Telegram && window.Telegram.WebApp;
+  if (tg) { try { tg.ready(); tg.expand(); } catch (e) {} }
+
+  const params = new URLSearchParams(location.search);
+  const img = params.get("img") || "";
+  // Only allow same-folder relative paths like "avatars/xyz.png" (no http/, no ..).
+  const safe = /^[a-zA-Z0-9/_-]+\.png$/.test(img) && !img.includes("..");
+
+  const el = document.getElementById("avatar");
+  const dl = document.getElementById("download");
+  if (safe) {
+    el.src = img;
+    dl.href = img;
+    el.onerror = () => {
+      document.getElementById("hint").innerHTML =
+        '<span class="err">Avatar not ready yet — give it a minute and refresh.</span>';
+    };
+  } else {
+    el.style.display = "none";
+    dl.style.display = "none";
+    document.getElementById("hint").innerHTML =
+      '<span class="err">No avatar specified.</span>';
+  }
+</script>
+</body>
+</html>

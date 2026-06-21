@@ -90,6 +90,48 @@ def _flip(face_a, face_b, bg):
     return frames
 
 
+def emblem_from_badge(front, diameter):
+    """Crop a circular emblem (icon + laurel) from the badge graphic.
+
+    The badge art already frames its icon in a laurel ring in the upper-middle;
+    a circular crop there makes a clean round emblem to stamp in a corner.
+    """
+    w, h = front.size
+    side = int(w * 0.86)
+    cx, cy = w // 2, int(h * 0.40)
+    crop = front.crop((cx - side // 2, cy - side // 2, cx + side // 2, cy + side // 2))
+    return _circular(crop, diameter)
+
+
+def build_badge_avatar(front_path, photo, out_path, size=1024):
+    """Write a profile picture: the member's photo with the award emblem in the
+    top-right corner (with a white ring), like the original badge avatars."""
+    front = Image.open(front_path).convert("RGB")
+
+    # Member photo, square-cropped to fill.
+    base = ImageOps.fit(
+        ImageOps.exif_transpose(photo).convert("RGB"), (size, size),
+        method=RESAMPLE, centering=(0.5, 0.4),
+    )
+
+    emblem_d = int(size * 0.34)
+    border = max(3, int(emblem_d * 0.06))
+    emblem = emblem_from_badge(front, emblem_d)
+
+    # White disc behind the emblem for a clean ring/border.
+    disc_d = emblem_d + 2 * border
+    disc = Image.new("RGBA", (disc_d, disc_d), (0, 0, 0, 0))
+    ImageDraw.Draw(disc).ellipse((0, 0, disc_d - 1, disc_d - 1), fill="white")
+    disc.paste(emblem, (border, border), emblem)
+
+    margin = int(size * 0.035)
+    pos = (size - disc_d - margin, margin)
+    base = base.convert("RGBA")
+    base.paste(disc, pos, disc)
+    base.convert("RGB").save(out_path, "PNG")
+    return out_path
+
+
 def build_flip_gif(front_path, photo, out_path):
     """Write an animated flip GIF to `out_path`.
 

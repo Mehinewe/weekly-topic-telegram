@@ -99,11 +99,15 @@ Because Telegram gives a bot **no message history** and drops undelivered update
   winner **@-mentioned** via a `tg://user` HTML link so they're pinged) + an inline URL
   button. Social = most replies-to-others, falling back to most messages. The `--this-week`
   flag (and workflow checkbox) targets the current week for testing.
-- **`make_award_gif.py`** — builds a personalised **flip GIF** (Pillow): the static badge
-  flips to reveal the winner's circular profile photo, then loops. At post time the poster
-  calls `get_profile_photo` (getUserProfilePhotos → getFile → download); if a photo is
-  available and the badge is a static image, it sends the flip GIF, else it falls back to
-  the static badge. Temp GIFs (`badges/_flip_*.gif`) are built and deleted per post.
+- **`make_award_gif.py`** — Pillow image builders. `build_flip_gif` makes the personalised
+  **flip GIF** (badge flips to reveal the winner's circular photo, loops); `build_badge_avatar`
+  makes the **badge avatar** (the winner's photo with a circular award emblem cropped from the
+  badge stamped in the corner). At post time the poster calls `get_profile_photo`
+  (getUserProfilePhotos → getFile → download) once per winner; with a photo it sends the flip
+  GIF and writes the avatar to `docs/avatars/<key>-<uid>.png`, pointing the button at
+  `docs/avatar.html?img=…`. With no photo it sends the static badge and the button falls back
+  to the manual-upload page. Temp flip GIFs (`badges/_flip_*.gif`) are deleted per post; the
+  awards workflow commits the new avatars so Pages serves them (≈1 min build lag after posting).
 
 `awards.csv` columns: `key, metric, gif, message, badge_type`. `message` uses `{name}`;
 `badge_type` must match a key in the mini app and becomes the button's `?type=` param.
