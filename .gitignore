@@ -7,6 +7,9 @@ __pycache__/
 .venv/
 venv/
 
+# Temp flip GIFs built per-winner at post time (cleaned up automatically)
+badges/_flip_*.gif
+
 # NOTE: activity_log.csv and activity_state.json ARE committed on purpose —
 # the hourly GitHub Actions logger pushes them back so the log persists
 # between runs. The log stores ONLY anonymous numeric Telegram ids (no names),

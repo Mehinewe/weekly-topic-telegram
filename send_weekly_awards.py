@@ -26,6 +26,7 @@ Required environment variables (real send only):
 
 import csv
 import html
+import io
 import os
 import sys
 from collections import Counter
@@ -194,6 +195,41 @@ def resolve_name(token, chat_id, user_id, _cache={}):
     return name
 
 
+def get_profile_photo(token, user_id):
+    """Download the member's current profile photo as a PIL image, or None.
+
+    Returns None if they have no photo, it's hidden from the bot, or anything
+    goes wrong — the caller then just sends the static badge.
+    """
+    try:
+        from PIL import Image
+    except ImportError:
+        return None
+    try:
+        base = f"https://api.telegram.org/bot{token}"
+        r = requests.get(
+            f"{base}/getUserProfilePhotos",
+            params={"user_id": user_id, "limit": 1}, timeout=API_TIMEOUT,
+        ).json()
+        if not r.get("ok") or r["result"].get("total_count", 0) == 0:
+            return None
+        # photos[0] is one photo in several sizes; the last is the largest.
+        file_id = r["result"]["photos"][0][-1]["file_id"]
+        f = requests.get(
+            f"{base}/getFile", params={"file_id": file_id}, timeout=API_TIMEOUT
+        ).json()
+        if not f.get("ok"):
+            return None
+        file_path = f["result"]["file_path"]
+        data = requests.get(
+            f"https://api.telegram.org/file/bot{token}/{file_path}",
+            timeout=API_TIMEOUT,
+        ).content
+        return Image.open(io.BytesIO(data))
+    except (requests.RequestException, ValueError, KeyError, IndexError, OSError):
+        return None
+
+
 def mention_html(user_id, first_name):
     """Build a clickable Telegram mention that pings the user.
 
@@ -348,7 +384,11 @@ def main():
         print("--- DRY RUN (nothing sent) ---")
         for award, uid, count in planned:
             name = resolve_name(token, chat_id, uid) if (token and chat_id) else f"User {uid}"
+            photo = "?"
+            if token:
+                photo = "yes (flip GIF)" if get_profile_photo(token, uid) else "no (static badge)"
             print(f"  {award['key']}: {name} (id {uid}) — {count} — gif={award['gif']}")
+            print(f"    profile photo: {photo}")
             print(f"    button -> {app_url}/?type={award['badge_type']}")
         print("--- end dry run ---")
         return
@@ -372,11 +412,35 @@ def main():
         )
         button_url = f"{app_url}/?type={award['badge_type']}"
         print(f"Posting {award['key']} for {first} ({count}).")
-        if len(caption) <= CAPTION_LIMIT:
-            send_badge(token, chat_id, media_path, caption, button_url)
-        else:
-            send_badge(token, chat_id, media_path, caption[:CAPTION_LIMIT], button_url)
-            send_message(token, chat_id, caption[CAPTION_LIMIT:])
+
+        # Personalise: if the badge is a static image and we can fetch the
+        # winner's photo, build a flip GIF (badge -> their photo). Otherwise
+        # fall back to the plain badge.
+        send_path, temp_gif = media_path, None
+        if media_path.suffix.lower() in IMAGE_EXTS:
+            photo = get_profile_photo(token, uid)
+            if photo is not None:
+                try:
+                    from make_award_gif import build_flip_gif
+                    temp_gif = BADGES_DIR / f"_flip_{award['key']}.gif"
+                    build_flip_gif(media_path, photo, temp_gif)
+                    send_path = temp_gif
+                    print("  personalised with profile photo (flip GIF)")
+                except Exception as exc:  # noqa: BLE001 - never block the post
+                    print(f"  (flip GIF failed: {exc}; sending static badge)",
+                          file=sys.stderr)
+            else:
+                print("  no profile photo available — sending static badge")
+
+        try:
+            if len(caption) <= CAPTION_LIMIT:
+                send_badge(token, chat_id, send_path, caption, button_url)
+            else:
+                send_badge(token, chat_id, send_path, caption[:CAPTION_LIMIT], button_url)
+                send_message(token, chat_id, caption[CAPTION_LIMIT:])
+        finally:
+            if temp_gif is not None and temp_gif.exists():
+                temp_gif.unlink()
 
     print("Done.")
 

@@ -94,10 +94,16 @@ Because Telegram gives a bot **no message history** and drops undelivered update
   `activity_log.csv` and `activity_state.json` are intentionally NOT gitignored.
 - **`send_weekly_awards.py`** (Monday via `awards.yml`) — reads the rows for the
   *previous* week (`monday_of(today) - 7d`), tallies per `awards.csv` metric
-  (video / voice / social), picks the top user per award, looks up that user's name **live
-  via `getChatMember`** (`resolve_name`), and sends `sendAnimation` (GIF from `badges/`) +
-  caption + an inline URL button. Social = most replies-to-others, falling back to most
-  messages. Dry-run resolves names only if a token is present, else prints the raw id.
+  (video / voice / social), picks the top user per award, looks up that user's first name
+  **live via `getChatMember`** (`resolve_name`), and posts the badge + caption (with the
+  winner **@-mentioned** via a `tg://user` HTML link so they're pinged) + an inline URL
+  button. Social = most replies-to-others, falling back to most messages. The `--this-week`
+  flag (and workflow checkbox) targets the current week for testing.
+- **`make_award_gif.py`** — builds a personalised **flip GIF** (Pillow): the static badge
+  flips to reveal the winner's circular profile photo, then loops. At post time the poster
+  calls `get_profile_photo` (getUserProfilePhotos → getFile → download); if a photo is
+  available and the badge is a static image, it sends the flip GIF, else it falls back to
+  the static badge. Temp GIFs (`badges/_flip_*.gif`) are built and deleted per post.
 
 `awards.csv` columns: `key, metric, gif, message, badge_type`. `message` uses `{name}`;
 `badge_type` must match a key in the mini app and becomes the button's `?type=` param.

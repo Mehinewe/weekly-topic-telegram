@@ -40,10 +40,17 @@ winners' names are looked up live from Telegram at post time. In GitHub:
   **Settings → Secrets and variables → Actions → Variables → New variable**
   named `BADGE_APP_URL` with your Pages URL.
 
-### 4. Add the award GIFs
-Drop one animated file per award into **`badges/`**, named to match `awards.csv`:
-`video_shark.gif`, `voice_legend.gif`, `social_butterfly.gif` (`.mp4`/`.webp`
-also fine). Until they're there, the Monday run skips that award with a warning.
+### 4. Add the award badges
+Drop one image per award into **`badges/`**, named to match `awards.csv`:
+`video_shark.png`, `voice_legend.png`, `social_butterfly.png` (animations
+`.gif`/`.mp4` also work). Until they're there, the Monday run skips that award
+with a warning.
+
+**Personalised flip:** when posting, the bot fetches the winner's Telegram
+profile photo and builds a short animated GIF that flips the badge over to
+reveal their photo in the circle (like the original). If a member has no
+profile photo, or it's hidden from the bot, that award just posts the static
+badge instead — nothing breaks.
 
 ### 5. (Optional) Real badge artwork
 The avatar page works out of the box by drawing a coloured ring + emoji. To use
