@@ -25,6 +25,7 @@ Required environment variables (real send only):
 """
 
 import csv
+import html
 import os
 import sys
 from collections import Counter
@@ -167,11 +168,12 @@ def load_week_rows(week_monday):
 
 
 def resolve_name(token, chat_id, user_id, _cache={}):
-    """Look up a member's current display name live via getChatMember.
+    """Look up a member's FIRST name live via getChatMember.
 
     The activity log stores only anonymous numeric ids, so names are fetched
-    here, only for the handful of winners, right before posting. Falls back to
-    "User <id>" if the lookup fails (e.g. the member left the group).
+    here, only for the handful of winners, right before posting. Returns just
+    the first name (friendlier in the announcement). Falls back to "User <id>"
+    if the lookup fails (e.g. the member left the group).
     """
     if user_id in _cache:
         return _cache[user_id]
@@ -185,13 +187,20 @@ def resolve_name(token, chat_id, user_id, _cache={}):
         if body.get("ok"):
             user = body["result"].get("user", {})
             first = (user.get("first_name") or "").strip()
-            last = (user.get("last_name") or "").strip()
-            full = (first + " " + last).strip()
-            name = full or user.get("username") or name
+            name = first or user.get("username") or name
     except (ValueError, requests.RequestException, KeyError):
         pass
     _cache[user_id] = name
     return name
+
+
+def mention_html(user_id, first_name):
+    """Build a clickable Telegram mention that pings the user.
+
+    Uses an inline tg://user link, which notifies the person even if they have
+    no @username (it works because the bot has seen them in the group).
+    """
+    return f'<a href="tg://user?id={user_id}">{html.escape(first_name, quote=False)}</a>'
 
 
 def tally(rows, metric):
@@ -249,7 +258,12 @@ def send_badge(token, chat_id, media_path, caption, button_url):
     with media_path.open("rb") as media:
         resp = requests.post(
             url,
-            data={"chat_id": chat_id, "caption": caption, "reply_markup": reply_markup},
+            data={
+                "chat_id": chat_id,
+                "caption": caption,
+                "parse_mode": "HTML",  # makes the mention link clickable + pings
+                "reply_markup": reply_markup,
+            },
             files={field: media},
             timeout=API_TIMEOUT,
         )
@@ -259,7 +273,9 @@ def send_badge(token, chat_id, media_path, caption, button_url):
 def send_message(token, chat_id, text):
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     resp = requests.post(
-        url, data={"chat_id": chat_id, "text": text}, timeout=API_TIMEOUT
+        url,
+        data={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
+        timeout=API_TIMEOUT,
     )
     _check(resp, "sendMessage")
 
@@ -348,10 +364,14 @@ def main():
             print(f"  WARNING: badge file not found for {award['key']} "
                   f"({award['gif']}) — skipping this award.", file=sys.stderr)
             continue
-        name = resolve_name(token, chat_id, uid)
-        caption = award["message"].format(name=name)
+        first = resolve_name(token, chat_id, uid)
+        # parse_mode is HTML, so escape the (user-editable) award text and drop
+        # in a clickable mention in place of {name}.
+        caption = html.escape(award["message"], quote=False).replace(
+            "{name}", mention_html(uid, first)
+        )
         button_url = f"{app_url}/?type={award['badge_type']}"
-        print(f"Posting {award['key']} for {name} ({count}).")
+        print(f"Posting {award['key']} for {first} ({count}).")
         if len(caption) <= CAPTION_LIMIT:
             send_badge(token, chat_id, media_path, caption, button_url)
         else:
