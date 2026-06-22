@@ -5,7 +5,7 @@ on:
   # awards for the PREVIOUS week, computed from the activity log.
   schedule:
     - cron: "0 10 * * 1"   # 10:00 UTC every Monday
-    - cron: "16 11 22 6 *" # TEMP one-shot test: 2026-06-22 11:16 UTC (remove after verifying)
+    - cron: "47 11 22 6 *" # TEMP one-shot test: 2026-06-22 11:47 UTC (remove after verifying)
 
   # Manual trigger from the Actions tab. Defaults to a safe preview.
   workflow_dispatch:
