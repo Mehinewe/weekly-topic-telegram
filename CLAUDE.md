@@ -69,7 +69,8 @@ Emojis matter: editing the CSV in Excel strips them, so the documented workflow
 ## Scheduling
 
 [.github/workflows/weekly.yml](.github/workflows/weekly.yml) runs the script every
-Monday at 10:00 UTC (`cron: "0 10 * * 1"`). GitHub cron is always UTC.
+Monday at 10:32 UTC (`cron: "32 10 * * 1"`). GitHub cron is always UTC. The awards
+workflow runs earlier at 10:17 UTC; both use off-peak minutes to reduce scheduler delays.
 
 `workflow_dispatch` allows a manual run with a `dry_run` input that **defaults to true**
 (safe preview). The scheduled run always posts for real; a manual run posts only if you

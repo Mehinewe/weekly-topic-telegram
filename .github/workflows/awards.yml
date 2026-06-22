@@ -1,11 +1,11 @@
 name: Weekly awards
 
 on:
-  # Runs every Monday at 10:00 UTC (same hour as the weekly topic). It posts
-  # awards for the PREVIOUS week, computed from the activity log.
+  # Runs every Monday at 10:17 UTC. Using an off-peak minute reduces the risk
+  # of GitHub delaying or dropping jobs scheduled at the top of the hour.
+  # It posts awards for the PREVIOUS week, computed from the activity log.
   schedule:
-    - cron: "0 10 * * 1"   # 10:00 UTC every Monday
-    - cron: "47 11 22 6 *" # TEMP one-shot test: 2026-06-22 11:47 UTC (remove after verifying)
+    - cron: "17 10 * * 1"  # 10:17 UTC every Monday
 
   # Manual trigger from the Actions tab. Defaults to a safe preview.
   workflow_dispatch:

@@ -33,7 +33,7 @@ Done — the new topic posts automatically on its Monday. ✅
 - **date** = the **Monday** the post should go out (format `YYYY-MM-DD`, e.g. `2026-08-03`).
 - **image** = must **exactly match** the filename you uploaded (including `.jpg` / `.png`).
 - **message** = wrap it in `"double quotes"`; you can use multiple lines and emojis.
-- Posts go out **every Monday at 10:00 GMT** automatically — your PC can be off.
+- Posts go out **every Monday at 10:32 GMT** automatically — your PC can be off.
 
 ## Want to preview before Monday?
 GitHub repo → **Actions** tab → **Weekly Telegram topic** → **Run workflow** →

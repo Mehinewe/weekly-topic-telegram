@@ -1,10 +1,10 @@
 name: Weekly Telegram topic
 
 on:
-  # Runs every Monday at 10:00 AM GMT/UTC. GitHub cron is always in UTC,
-  # and GMT == UTC, so no conversion is needed.
+  # Runs every Monday at 10:32 AM GMT/UTC. The off-peak minute avoids the
+  # heavier GitHub Actions scheduler load at the top of the hour.
   schedule:
-    - cron: "0 10 * * 1"   # 10:00 GMT every Monday
+    - cron: "32 10 * * 1"  # 10:32 GMT every Monday
 
   # Lets you trigger a run by hand from the Actions tab.
   workflow_dispatch:
