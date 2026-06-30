@@ -265,17 +265,20 @@ def tally(rows, metric):
     return counts
 
 
-def pick_winner(counts):
+def pick_winner(counts, exclude=()):
     """Return (user_id, count) for the top contributor, or None.
 
-    Ties are broken by user_id so the result is deterministic.
+    Users in `exclude` are skipped, so someone who already won another award
+    can't win this one too (one person = one badge). Ties are broken by
+    user_id so the result is deterministic.
     """
-    if not counts:
+    eligible = {uid: c for uid, c in counts.items() if uid not in exclude}
+    if not eligible:
         return None
-    best = max(counts.values())
+    best = max(eligible.values())
     if best <= 0:
         return None
-    winners = sorted(uid for uid, c in counts.items() if c == best)
+    winners = sorted(uid for uid, c in eligible.items() if c == best)
     return winners[0], best
 
 
@@ -367,14 +370,18 @@ def main():
         print("No activity logged for that week — nothing to post.")
         return
 
-    # Decide every winner first, so a dry run shows the full picture.
+    # Decide every winner first, so a dry run shows the full picture. Each
+    # winner is excluded from later awards so one person can't win more than
+    # one badge — a runner-up takes the next award instead.
     planned = []
+    taken = set()
     for award in awards:
-        result = pick_winner(tally(rows, award["metric"]))
+        result = pick_winner(tally(rows, award["metric"]), exclude=taken)
         if result is None:
             print(f"  {award['key']}: no qualifying activity — skipping.")
             continue
         uid, count = result
+        taken.add(uid)
         planned.append((award, uid, count))
 
     if not planned:
