@@ -1,0 +1,38 @@
+name: Weekly Telegram Wednesday image
+
+on:
+  # Runs every Wednesday at 10:32 AM GMT/UTC. The off-peak minute avoids the
+  # heavier GitHub Actions scheduler load at the top of the hour.
+  schedule:
+    - cron: "32 10 * * 3"  # 10:32 GMT every Wednesday
+
+  # Lets you trigger a run by hand from the Actions tab.
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (preview only, do NOT post to the group)"
+        type: boolean
+        default: true
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Post this Wednesday's image
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        # On the weekly schedule this always posts. On a manual run it posts
+        # only if you untick "Dry run" (default is preview-only / safe).
+        run: python send_weekly_topic.py --schedule schedule_wednesday.csv --images images_wednesday ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && '--dry-run' || '' }}

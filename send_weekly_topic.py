@@ -11,6 +11,10 @@ Run manually for testing:
     python send_weekly_topic.py            # picks this week's row
     python send_weekly_topic.py 2026-06-22 # force a specific Monday (for testing)
 
+By default it reads schedule.csv + images/. Point it at a different content set
+with --schedule and --images (used by the Wednesday poster):
+    python send_weekly_topic.py --schedule schedule_wednesday.csv --images images_wednesday
+
 Required environment variables:
     TELEGRAM_BOT_TOKEN   the token from @BotFather
     TELEGRAM_CHAT_ID     your group's chat id (negative number, e.g. -1001234567890)
@@ -176,7 +180,7 @@ def pick_row(rows, target_monday):
 
 
 def send_photo(token, chat_id, image_path, caption):
-    """Send a photo with caption via Telegram sendPhoto."""
+    """Send a photo with caption via sendPhoto; return the new message_id."""
     url = f"https://api.telegram.org/bot{token}/sendPhoto"
     with image_path.open("rb") as photo:
         resp = requests.post(
@@ -185,7 +189,27 @@ def send_photo(token, chat_id, image_path, caption):
             files={"photo": photo},
             timeout=API_TIMEOUT,
         )
-    _check(resp, "sendPhoto")
+    body = _check(resp, "sendPhoto")
+    return (body.get("result") or {}).get("message_id")
+
+
+def pin_message(token, chat_id, message_id):
+    """Pin a message silently (no 'pinned a message' notification to members).
+
+    Requires the bot to be an admin with the 'Pin Messages' permission. A new
+    pin replaces the previous one at the top of the chat.
+    """
+    url = f"https://api.telegram.org/bot{token}/pinChatMessage"
+    resp = requests.post(
+        url,
+        data={
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "disable_notification": True,
+        },
+        timeout=API_TIMEOUT,
+    )
+    _check(resp, "pinChatMessage")
 
 
 def send_message(token, chat_id, text):
@@ -208,6 +232,7 @@ def _check(resp, what):
     if not body.get("ok"):
         _fail(f"{what} failed: {body.get('description', resp.text[:300])}")
     print(f"{what} OK")
+    return body
 
 
 # --- Main -----------------------------------------------------------------
@@ -215,10 +240,34 @@ def _check(resp, what):
 def main():
     load_dotenv()  # local convenience; harmless on GitHub Actions (no .env there)
 
-    # Parse arguments: an optional date and an optional --dry-run flag, in any order.
-    #   --dry-run  show what WOULD be posted, without contacting Telegram.
+    # Parse arguments: an optional date and optional flags, in any order.
+    #   --dry-run           show what WOULD be posted, without contacting Telegram.
+    #   --schedule PATH     use a different schedule CSV (default: schedule.csv).
+    #   --images PATH       use a different images folder (default: images/).
+    # --schedule/--images let one script drive multiple content streams
+    # (e.g. the Wednesday poster), so all the send logic stays in one place.
+    global SCHEDULE_FILE, IMAGES_DIR
     args = sys.argv[1:]
     dry_run = "--dry-run" in args
+
+    def take_value(flag):
+        """Pull the value following `flag` out of args, or return None."""
+        if flag in args:
+            i = args.index(flag)
+            if i + 1 >= len(args):
+                _fail(f"{flag} needs a value")
+            value = args[i + 1]
+            del args[i : i + 2]
+            return value
+        return None
+
+    schedule_arg = take_value("--schedule")
+    images_arg = take_value("--images")
+    if schedule_arg:
+        SCHEDULE_FILE = (BASE_DIR / schedule_arg).resolve()
+    if images_arg:
+        IMAGES_DIR = (BASE_DIR / images_arg).resolve()
+
     date_args = [a for a in args if not a.startswith("--")]
 
     if date_args:
@@ -259,11 +308,16 @@ def main():
     print(f"Posting topic for {row['date']}: image={image_path.name}")
 
     if len(message) <= CAPTION_LIMIT:
-        send_photo(token, chat_id, image_path, message)
+        message_id = send_photo(token, chat_id, image_path, message)
     else:
         # Caption too long: photo carries the first chunk, rest as a follow-up.
-        send_photo(token, chat_id, image_path, message[:CAPTION_LIMIT])
+        message_id = send_photo(token, chat_id, image_path, message[:CAPTION_LIMIT])
         send_message(token, chat_id, message[CAPTION_LIMIT:])
+
+    # Pin the photo (the post's main message) so it sits at the top of the chat.
+    # Needs the bot to be an admin with 'Pin Messages'; a failed pin stops the run.
+    if message_id is not None:
+        pin_message(token, chat_id, message_id)
 
     print("Done.")
 
