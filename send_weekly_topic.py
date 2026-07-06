@@ -23,7 +23,7 @@ Required environment variables:
 import csv
 import os
 import sys
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
@@ -41,6 +41,13 @@ except (AttributeError, ValueError):
 BASE_DIR = Path(__file__).resolve().parent
 SCHEDULE_FILE = BASE_DIR / "schedule.csv"
 IMAGES_DIR = BASE_DIR / "images"
+
+# Records which (schedule, week) posts have already gone out, so a run that
+# repeats — a delayed GitHub cron, a backup cron time, a manual re-trigger —
+# can see the week is done and skip. Like activity_log.csv, this is committed
+# back to the repo by the workflow so state survives across stateless runs, so
+# it is intentionally NOT gitignored.
+SENT_LOG_FILE = BASE_DIR / "sent_log.csv"
 
 # Telegram limits a photo caption to 1024 characters. Longer messages are
 # split: the photo goes out with the first chunk, the rest as a text message.
@@ -235,6 +242,38 @@ def _check(resp, what):
     return body
 
 
+# --- Idempotency guard ----------------------------------------------------
+# The whole point: GitHub cron is best-effort — a run can be delayed by hours
+# or fire more than once, and we add backup cron times on purpose. Recording
+# each successful post (keyed by schedule file + the week's Monday) lets every
+# later run for the same week no-op instead of double-posting.
+
+def already_sent(schedule_path, target_monday):
+    """True if this (schedule, week) was already posted, per sent_log.csv."""
+    if not SENT_LOG_FILE.exists():
+        return False
+    want = (schedule_path.name, target_monday.isoformat())
+    with SENT_LOG_FILE.open(newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            if (row.get("schedule"), row.get("target_monday")) == want:
+                return True
+    return False
+
+
+def record_sent(schedule_path, target_monday):
+    """Append a 'posted' marker so later retry/backup runs skip this week."""
+    new_file = not SENT_LOG_FILE.exists()
+    with SENT_LOG_FILE.open("a", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        if new_file:
+            writer.writerow(["schedule", "target_monday", "iso_time"])
+        writer.writerow([
+            schedule_path.name,
+            target_monday.isoformat(),
+            datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        ])
+
+
 # --- Main -----------------------------------------------------------------
 
 def main():
@@ -249,6 +288,7 @@ def main():
     global SCHEDULE_FILE, IMAGES_DIR
     args = sys.argv[1:]
     dry_run = "--dry-run" in args
+    force = "--force" in args  # post even if sent_log.csv says this week is done
 
     def take_value(flag):
         """Pull the value following `flag` out of args, or return None."""
@@ -297,6 +337,17 @@ def main():
         print("--- end dry run ---")
         return
 
+    # Idempotency guard: if this week's post already went out (recorded in
+    # sent_log.csv, which the workflow commits back), skip. This is what makes
+    # the backup cron times safe — the first successful run posts, later runs
+    # for the same week no-op instead of double-posting. --force overrides it.
+    if not force and already_sent(SCHEDULE_FILE, target_monday):
+        print(
+            f"Already posted {SCHEDULE_FILE.name} for week of {target_monday}; "
+            "skipping (use --force to post anyway)."
+        )
+        return
+
     # Real send path needs credentials.
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID")
@@ -318,6 +369,10 @@ def main():
     # Needs the bot to be an admin with 'Pin Messages'; a failed pin stops the run.
     if message_id is not None:
         pin_message(token, chat_id, message_id)
+
+    # Mark this week done so any repeat run (delayed cron, backup time, manual
+    # re-trigger) skips instead of posting again.
+    record_sent(SCHEDULE_FILE, target_monday)
 
     print("Done.")
 
