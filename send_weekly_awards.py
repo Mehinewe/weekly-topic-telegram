@@ -30,7 +30,7 @@ import io
 import os
 import sys
 from collections import Counter
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
@@ -47,6 +47,13 @@ BASE_DIR = Path(__file__).resolve().parent
 LOG_FILE = BASE_DIR / "activity_log.csv"
 AWARDS_FILE = BASE_DIR / "awards.csv"
 BADGES_DIR = BASE_DIR / "badges"
+
+# Shared with send_weekly_topic.py: records which (schedule, week) posts have
+# already gone out, keyed here by "awards.csv", so a delayed/duplicate cron
+# run for the same week skips instead of double-posting.
+SENT_LOG_FILE = BASE_DIR / "sent_log.csv"
+SENT_LOG_KEY = "awards.csv"
+
 # Built badge avatars are written under docs/ so GitHub Pages serves them and
 # the award button can link straight to the winner's finished avatar.
 AVATARS_DIR = BASE_DIR / "docs" / "avatars"
@@ -282,6 +289,37 @@ def pick_winner(counts, exclude=()):
     return winners[0], best
 
 
+# --- Idempotency guard ----------------------------------------------------
+# Mirrors send_weekly_topic.py's guard: GitHub cron is best-effort, so awards.yml
+# gets backup cron times too. Recording each successful post (keyed by
+# "awards.csv" + the week's Monday) lets a later retry for the same week no-op.
+
+def already_posted(target_monday):
+    """True if awards for this week were already posted, per sent_log.csv."""
+    if not SENT_LOG_FILE.exists():
+        return False
+    want = (SENT_LOG_KEY, target_monday.isoformat())
+    with SENT_LOG_FILE.open(newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            if (row.get("schedule"), row.get("target_monday")) == want:
+                return True
+    return False
+
+
+def record_posted(target_monday):
+    """Append a 'posted' marker so later retry/backup runs skip this week."""
+    new_file = not SENT_LOG_FILE.exists()
+    with SENT_LOG_FILE.open("a", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        if new_file:
+            writer.writerow(["schedule", "target_monday", "iso_time"])
+        writer.writerow([
+            SENT_LOG_KEY,
+            target_monday.isoformat(),
+            datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        ])
+
+
 # --- Telegram -------------------------------------------------------------
 
 def send_badge(token, chat_id, media_path, caption, button_url):
@@ -340,6 +378,7 @@ def main():
     args = sys.argv[1:]
     dry_run = "--dry-run" in args
     this_week = "--this-week" in args  # testing: award the CURRENT week, not last
+    force = "--force" in args  # post even if sent_log.csv says this week is done
     date_args = [a for a in args if not a.startswith("--")]
 
     if date_args:
@@ -403,6 +442,16 @@ def main():
         print("--- end dry run ---")
         return
 
+    # Idempotency guard: if awards for this week already went out (recorded in
+    # sent_log.csv, which the workflow commits back), skip. This is what makes
+    # backup cron times safe. --force overrides it.
+    if not force and already_posted(target_monday):
+        print(
+            f"Already posted awards for week of {target_monday}; "
+            "skipping (use --force to post anyway)."
+        )
+        return
+
     if not token:
         _fail("TELEGRAM_BOT_TOKEN is not set")
     if not chat_id:
@@ -464,6 +513,10 @@ def main():
         finally:
             if temp_gif is not None and temp_gif.exists():
                 temp_gif.unlink()
+
+    # Mark this week done so any repeat run (delayed cron, backup time, manual
+    # re-trigger) skips instead of posting again.
+    record_posted(target_monday)
 
     print("Done.")
 

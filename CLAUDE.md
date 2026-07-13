@@ -73,16 +73,19 @@ Monday at 10:32 UTC (`cron: "32 10 * * 1"`). GitHub cron is always UTC. The awar
 workflow runs earlier at 10:17 UTC; both use off-peak minutes to reduce scheduler delays.
 
 **Cron is best-effort — expect delays.** GitHub runs scheduled workflows on a queue and
-routinely fires them late (hours, sometimes) or, under load, drops a run entirely. So the
-topic (`weekly.yml`) and Wednesday (`wednesday.yml`) workflows each have **three cron
-times** — a primary plus two later catch-ups (10:32 / 12:47 / 14:47 UTC) — and an
-**idempotency guard** keeps that safe: `send_weekly_topic.py` records each successful post
-in `sent_log.csv` (`schedule,target_monday,iso_time`) and skips a week already marked, so
-only the first attempt that lands actually posts and the rest no-op. The workflows commit
-`sent_log.csv` back to the repo (concurrency-guarded, `contents: write`), so like
-`activity_log.csv` it is intentionally NOT gitignored. `--force` posts even if the week is
-marked (for an intentional re-send). `awards.yml` is NOT yet guarded this way — it still
-has a single cron and would double-post if re-run.
+routinely fires them late (hours, sometimes) or, under load, drops a run entirely — this has
+happened to a *primary* cron slot outright (no run object at all, not just a late one), so
+the guard below isn't just theoretical. So the topic (`weekly.yml`), Wednesday
+(`wednesday.yml`), and awards (`awards.yml`) workflows each have **three cron times** — a
+primary plus two later catch-ups (10:32 / 12:47 / 14:47 UTC for the topic poster; 10:17 /
+12:32 / 14:32 UTC for awards) — and an **idempotency guard** keeps that safe:
+`send_weekly_topic.py` and `send_weekly_awards.py` each record every successful post in the
+shared `sent_log.csv` (`schedule,target_monday,iso_time`, keyed by `schedule.csv` /
+`schedule_wednesday.csv` / `awards.csv`) and skip a week already marked, so only the first
+attempt that lands actually posts and the rest no-op. The workflows commit `sent_log.csv`
+back to the repo (concurrency-guarded, `contents: write`), so like `activity_log.csv` it is
+intentionally NOT gitignored. `--force` posts even if the week is marked (for an intentional
+re-send).
 
 `workflow_dispatch` allows a manual run with a `dry_run` input that **defaults to true**
 (safe preview). The scheduled run always posts for real; a manual run posts only if you
